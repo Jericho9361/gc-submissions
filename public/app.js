@@ -15,7 +15,7 @@
   /* ------------------------------------------------------------------ state */
   const S = {
     stores: [], area: 'All', q: '',
-    store: null, tab: 'new',
+    store: null, tab: 'new', amt: {}, curAmt: LS.get('gc_cur_amt', 0),
     gcType: null, series: [], images: [], submittedBy: LS.get('gc_by', ''), notes: '',
     showRange: false, busy: false,
     subs: [], subsLoading: false, subsError: '', listQ: '', listType: 'all',
@@ -111,7 +111,7 @@
       const sub = {
         ticketId: 'GC-' + day.slice(2) + '-' + String(d.seq[day]).padStart(4, '0'),
         submittedAt: now.toISOString(), storeCode: b.store, storeName: st.name || b.store, area: st.area || '',
-        gcType: b.gcType, series: b.series, count: b.series.length, submittedBy: b.submittedBy, notes: b.notes,
+        gcType: b.gcType, series: b.series, amounts: b.amounts || [], totalAmount: b.totalAmount || 0, count: b.series.length, submittedBy: b.submittedBy, notes: b.notes,
         images: b.images.map((im) => im.dataUrl.length < 180000 ? im.dataUrl : ''), imageCount: b.images.length,
         remarks: 'Submitted', emailStatus: 'Demo — not sent', clientId: b.clientId
       };
@@ -143,6 +143,11 @@
     const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t);
     setTimeout(() => t.remove(), ms);
   }
+  const DENOMS = () => (C.GC_AMOUNTS || [100, 200, 300, 500, 1000]);
+  const peso = (n) => '₱' + Number(n || 0).toLocaleString('en-PH');
+  const amountsOf = (s) => (s.amounts || []).map(Number);
+  const totalOf = (s) => (+s.totalAmount) || amountsOf(s).reduce((a, b) => a + (b || 0), 0);
+  function formTotal() { return S.series.reduce((t, x) => t + (+S.amt[x] || 0), 0); }
   function normSeries(s) { return String(s || '').trim().toUpperCase().replace(/\s+/g, ''); }
   function pinFor(code) { return LS.get('gc_pin_' + code, ''); }
 
@@ -352,7 +357,7 @@
   }
 
   /* ------------------------------------------------------------------ form */
-  function resetForm() { S.gcType = null; S.series = []; S.images = []; S.notes = ''; S.showRange = false; }
+  function resetForm() { S.gcType = null; S.series = []; S.amt = {}; S.images = []; S.notes = ''; S.showRange = false; }
 
   function renderForm() {
     const pane = $('#pane');
@@ -362,12 +367,17 @@
       '<section class="card span2"><div class="step-h"><span class="step-n ' + (S.gcType ? 'done' : '') + '">' + (S.gcType ? '✓' : '1') + '</span><h2>GC type</h2></div>' +
       '<div class="types">' + types.map((t) => '<button class="type ' + (S.gcType === t.id ? 'on' : '') + '" data-type="' + esc(t.id) + '"><b><span class="dot" style="background:' + (/pluxee|sodexo/i.test(t.id) ? 'var(--silver-500)' : 'var(--blue-600)') + '"></span>' + esc(t.label) + '</b><small>' + esc(t.hint || '') + '</small></button>').join('') + '</div></section>' +
       // Step 2
-      '<section class="card"><div class="step-h"><span class="step-n ' + (S.series.length ? 'done' : '') + '">' + (S.series.length ? '✓' : '2') + '</span><h2>Series numbers</h2><span class="meta">' + S.series.length + ' GC' + (S.series.length === 1 ? '' : 's') + '</span></div>' +
+      '<section class="card"><div class="step-h"><span class="step-n ' + (S.series.length ? 'done' : '') + '">' + (S.series.length ? '✓' : '2') + '</span><h2>Series numbers & amount</h2><span class="meta">' + S.series.length + ' GC' + (S.series.length === 1 ? '' : 's') + (formTotal() ? ' · <b style="color:var(--blue-800)">' + peso(formTotal()) + '</b>' : '') + '</span></div>' +
+      '<div class="amt-row"><span class="amt-lbl">GC amount</span>' + DENOMS().map((d) => '<button class="amt ' + (S.curAmt === d ? 'on' : '') + '" data-amt="' + d + '">' + peso(d) + '</button>').join('') + '</div>' +
+      '<p class="helper" style="margin:-4px 0 10px">' + (S.curAmt ? 'Series you add now will be tagged <b>' + peso(S.curAmt) + '</b>. Change the amount anytime before adding more.' : '<b style="color:var(--err)">Select the GC amount first</b>, then enter the series numbers.') + '</p>' +
       '<div class="series-entry"><input id="serIn" placeholder="Type or scan series no." autocomplete="off" autocapitalize="characters" enterkeyhint="done"><button class="btn" id="serAdd">Add</button></div>' +
       '<p class="helper">Press Enter after each one. You can also paste a list (one per line or comma-separated). <button class="linkish" id="rangeToggle">' + (S.showRange ? 'Hide range' : 'Add a consecutive range') + '</button></p>' +
       (S.showRange ? '<div class="range"><input id="rFrom" placeholder="From e.g. TG000101"><input id="rTo" placeholder="To e.g. TG000110"><button class="btn sm" id="rAdd">Add range</button></div>' : '') +
-      '<div class="series-list" id="serList">' + S.series.map((s, i) => '<span class="sc">' + esc(s) + '<button aria-label="Remove ' + esc(s) + '" data-rm="' + i + '">×</button></span>').join('') + '</div>' +
-      (S.series.length > 1 ? '<div class="series-tools"><span class="helper" style="margin:0">Tap × to remove a wrong entry.</span><button class="linkish" id="serClear">Clear all</button></div>' : '') +
+      '<div class="series-list" id="serList">' + S.series.map((s, i) => '<span class="sc">' + esc(s) +
+        '<select class="sc-amt" data-setamt="' + i + '" aria-label="Amount for ' + esc(s) + '">' + DENOMS().map((d) => '<option value="' + d + '"' + (+S.amt[s] === d ? ' selected' : '') + '>' + peso(d) + '</option>').join('') + '</select>' +
+        '<button aria-label="Remove ' + esc(s) + '" data-rm="' + i + '">×</button></span>').join('') + '</div>' +
+      (S.series.length ? '<div class="amt-sum">' + amountSummary(S.series.map((x) => +S.amt[x])) + '</div>' : '') +
+      (S.series.length > 1 ? '<div class="series-tools"><span class="helper" style="margin:0">Tap the amount to change it, × to remove.</span><button class="linkish" id="serClear">Clear all</button></div>' : '') +
       '</section>' +
       // Step 3
       '<section class="card"><div class="step-h"><span class="step-n ' + (S.images.length ? 'done' : '') + '">' + (S.images.length ? '✓' : '3') + '</span><h2>GC images</h2><span class="meta">' + S.images.length + ' / ' + (C.MAX_IMAGES || 10) + '</span></div>' +
@@ -381,7 +391,7 @@
 
     pane.querySelectorAll('[data-type]').forEach((b) => b.onclick = () => { S.gcType = b.dataset.type; renderForm(); });
     const inp = $('#serIn');
-    const addFromInput = () => { addSeries(inp.value); inp.value = ''; renderForm(); $('#serIn').focus(); };
+    const addFromInput = () => { if (!S.curAmt) { addSeries(inp.value); inp.focus(); return; } addSeries(inp.value); inp.value = ''; renderForm(); $('#serIn').focus(); };
     $('#serAdd').onclick = addFromInput;
     inp.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addFromInput(); } };
     inp.onpaste = (e) => {
@@ -390,8 +400,10 @@
     };
     $('#rangeToggle').onclick = () => { S.showRange = !S.showRange; renderForm(); };
     if (S.showRange) $('#rAdd').onclick = () => { if (addRange($('#rFrom').value, $('#rTo').value)) { S.showRange = false; renderForm(); } };
-    pane.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { S.series.splice(+b.dataset.rm, 1); renderForm(); });
-    const clr = $('#serClear'); if (clr) clr.onclick = () => { if (confirm('Remove all ' + S.series.length + ' series numbers?')) { S.series = []; renderForm(); } };
+    pane.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { const x = S.series.splice(+b.dataset.rm, 1)[0]; delete S.amt[x]; renderForm(); });
+    pane.querySelectorAll('[data-amt]').forEach((b) => b.onclick = () => { S.curAmt = +b.dataset.amt; LS.set('gc_cur_amt', S.curAmt); renderForm(); const i = $('#serIn'); if (i) i.focus(); });
+    pane.querySelectorAll('[data-setamt]').forEach((sel) => sel.onchange = () => { S.amt[S.series[+sel.dataset.setamt]] = +sel.value; renderForm(); });
+    const clr = $('#serClear'); if (clr) clr.onclick = () => { if (confirm('Remove all ' + S.series.length + ' series numbers?')) { S.series = []; S.amt = {}; renderForm(); } };
     $('#pickCam').onclick = () => $('#fileCamera').click();
     $('#pickGal').onclick = () => $('#fileGallery').click();
     pane.querySelectorAll('[data-rmimg]').forEach((b) => b.onclick = () => { S.images.splice(+b.dataset.rmimg, 1); renderForm(); });
@@ -401,13 +413,14 @@
   }
 
   function addSeries(text) {
+    if (!S.curAmt) { if (String(text || '').trim()) toast('Select the GC amount (₱100–₱1,000) first.'); return 0; }
     const parts = String(text || '').split(/[\n,;\t]+|\s{2,}/).map(normSeries).filter(Boolean);
     let added = 0, dup = 0;
     const max = C.MAX_SERIES || 500;
     for (const p of parts) {
       if (S.series.includes(p)) { dup++; continue; }
       if (S.series.length >= max) { toast('Maximum of ' + max + ' series per submission.'); break; }
-      S.series.push(p); added++;
+      S.series.push(p); S.amt[p] = S.curAmt; added++;
     }
     if (dup) toast(dup + ' duplicate' + (dup > 1 ? 's' : '') + ' skipped — already in the list.');
     else if (added > 1) toast(added + ' series numbers added.');
@@ -425,6 +438,7 @@
     if (n > 200) { toast('A range can have at most 200 numbers.'); return false; }
     const width = ma[2].length; const list = [];
     for (let i = from; i <= to; i++) list.push(ma[1] + String(i).padStart(width, '0'));
+    if (!S.curAmt) { toast('Select the GC amount (₱100–₱1,000) first.'); return false; }
     addSeries(list.join('\n'));
     return true;
   }
@@ -464,15 +478,21 @@
     });
   }
 
+  function amountSummary(arr) {
+    const by = {}; arr.forEach((a) => { if (a) by[a] = (by[a] || 0) + 1; });
+    const parts = Object.keys(by).map(Number).sort((a, b) => a - b).map((d) => by[d] + ' × ' + peso(d));
+    return parts.join(' · ') + (parts.length ? ' = <b>' + peso(arr.reduce((t, a) => t + (a || 0), 0)) + '</b>' : '');
+  }
   function renderSubmitBar() {
     const bar = $('#submitbar');
     if (!S.store || S.tab !== 'new') { bar.innerHTML = ''; return; }
     const missing = [];
     if (!S.gcType) missing.push('GC type');
     if (!S.series.length) missing.push('series no.');
+    else if (S.series.some((x) => !S.amt[x])) missing.push('GC amount');
     if (!S.images.length) missing.push('images');
     bar.innerHTML = '<div class="submitbar"><div class="submitbar-inner"><div class="sum">' +
-      (missing.length ? '<b>Still needed</b>' + esc(missing.join(', ')) : '<b>Ready to submit</b>' + esc(S.gcType) + ' · ' + S.series.length + ' GC' + (S.series.length > 1 ? 's' : '') + ' · ' + S.images.length + ' image' + (S.images.length > 1 ? 's' : '')) +
+      (missing.length ? '<b>Still needed</b>' + esc(missing.join(', ')) : '<b>Ready to submit · ' + peso(formTotal()) + '</b>' + esc(S.gcType) + ' · ' + S.series.length + ' GC' + (S.series.length > 1 ? 's' : '') + ' · ' + S.images.length + ' image' + (S.images.length > 1 ? 's' : '')) +
       '</div><button class="btn accent" id="submitBtn" ' + (missing.length || S.busy ? 'disabled' : '') + '>' + (S.busy ? '<span class="spinner"></span>Sending…' : 'Submit') + '</button></div></div>';
     $('#submitBtn').onclick = confirmSubmit;
   }
@@ -480,9 +500,9 @@
   function confirmSubmit() {
     modal(
       '<h3>Submit to Franchise Dev?</h3><p class="sub">This will be emailed to <b>' + esc(C.EMAIL_TO) + '</b> with the attached images.</p>' +
-      '<dl class="kv"><dt>Store</dt><dd>' + esc(S.store.name) + '</dd><dt>GC type</dt><dd>' + typePill(S.gcType) + '</dd><dt>Series</dt><dd>' + S.series.length + ' GC' + (S.series.length > 1 ? 's' : '') + '</dd><dt>Images</dt><dd>' + S.images.length + '</dd>' +
+      '<dl class="kv"><dt>Store</dt><dd>' + esc(S.store.name) + '</dd><dt>GC type</dt><dd>' + typePill(S.gcType) + '</dd><dt>Series</dt><dd>' + S.series.length + ' GC' + (S.series.length > 1 ? 's' : '') + '</dd><dt>Total amount</dt><dd style="color:var(--blue-800);font-size:16px">' + peso(formTotal()) + '</dd><dt>Images</dt><dd>' + S.images.length + '</dd>' +
       (S.submittedBy ? '<dt>By</dt><dd>' + esc(S.submittedBy) + '</dd>' : '') + '</dl>' +
-      '<div class="mono-box">' + S.series.map(esc).join('\n') + '</div>' +
+      '<div class="mono-box">' + S.series.map((x) => esc(x) + '  —  ' + peso(S.amt[x])).join('\n') + '</div>' +
       '<div class="sheet-actions"><button class="btn ghost" id="cBack">Edit</button><button class="btn accent" id="cGo">Confirm & submit</button></div>',
       { onMount(el) { $('#cBack', el).onclick = closeModal; $('#cGo', el).onclick = () => { closeModal(); doSubmit(); }; } }
     );
@@ -492,7 +512,7 @@
     if (S.busy) return;
     const payload = {
       action: 'submit', clientId: uid(), store: S.store.code, pin: pinFor(S.store.code),
-      gcType: S.gcType, series: S.series.slice(), submittedBy: S.submittedBy.trim(), notes: S.notes.trim(),
+      gcType: S.gcType, series: S.series.slice(), amounts: S.series.map((x) => +S.amt[x]), totalAmount: formTotal(), submittedBy: S.submittedBy.trim(), notes: S.notes.trim(),
       images: S.images.map((im, i) => ({ name: 'GC_' + (i + 1) + '.jpg', dataUrl: im.dataUrl })),
       createdAt: new Date().toISOString(), storeName: S.store.name
     };
@@ -520,7 +540,7 @@
   function showSuccess(sub) {
     modal(
       '<div class="center"><div class="big-ok">✓</div><h3>Submitted</h3><p class="sub">Sent to ' + esc(C.EMAIL_TO) + (DEMO ? ' (demo — no email sent)' : '') + '</p></div>' +
-      '<dl class="kv"><dt>Ticket no.</dt><dd style="font-family:ui-monospace,Menlo,monospace">' + esc(sub.ticketId) + '</dd><dt>GC type</dt><dd>' + typePill(sub.gcType) + '</dd><dt>Series</dt><dd>' + esc(sub.count || (sub.series || []).length) + ' GC(s)</dd><dt>Remarks</dt><dd>' + remarksPill(sub.remarks) + '</dd></dl>' +
+      '<dl class="kv"><dt>Ticket no.</dt><dd style="font-family:ui-monospace,Menlo,monospace">' + esc(sub.ticketId) + '</dd><dt>GC type</dt><dd>' + typePill(sub.gcType) + '</dd><dt>Series</dt><dd>' + esc(sub.count || (sub.series || []).length) + ' GC(s)</dd>' + (totalOf(sub) ? '<dt>Total amount</dt><dd>' + peso(totalOf(sub)) + '</dd>' : '') + '<dt>Remarks</dt><dd>' + remarksPill(sub.remarks) + '</dd></dl>' +
       '<div class="sheet-actions"><button class="btn ghost" id="sNew">New submission</button><button class="btn" id="sList">View my submissions</button></div>',
       { onMount(el) { $('#sNew', el).onclick = closeModal; $('#sList', el).onclick = () => { closeModal(); go('#/store/' + encodeURIComponent(S.store.code) + '/list'); }; } }
     );
@@ -594,7 +614,7 @@
     renderSubmitBar();
     const code = S.store.code;
     const pend = S.outbox.filter((o) => o.store === code).map((o) => ({
-      ticketId: 'Pending', submittedAt: o.createdAt, gcType: o.gcType, series: o.series, count: o.series.length,
+      ticketId: 'Pending', submittedAt: o.createdAt, gcType: o.gcType, series: o.series, amounts: o.amounts || [], totalAmount: o.totalAmount || 0, count: o.series.length,
       remarks: o.error ? 'Failed — tap to see' : 'Pending sync', submittedBy: o.submittedBy, notes: o.notes,
       images: o.images.map((i) => i.dataUrl), _outbox: o
     }));
@@ -602,6 +622,7 @@
     const q = S.listQ.trim().toUpperCase();
     const rows = all.filter((s) => (S.listType === 'all' || s.gcType === S.listType) &&
       (!q || (s.ticketId || '').toUpperCase().includes(q) || (s.series || []).some((x) => String(x).toUpperCase().includes(q))));
+    const totalAmt = S.subs.reduce((a, s) => a + totalOf(s), 0);
     const totalGC = S.subs.reduce((a, s) => a + (+s.count || (s.series || []).length), 0);
     const now = new Date();
     const monthGC = S.subs.filter((s) => { const d = new Date(s.submittedAt); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
@@ -610,7 +631,8 @@
     pane.innerHTML =
       '<div class="stats"><div class="stat"><b>' + S.subs.length + '</b><small>Tickets submitted</small></div>' +
       '<div class="stat"><b>' + totalGC + '</b><small>GCs submitted</small></div>' +
-      '<div class="stat"><b>' + monthGC + '</b><small>GCs this month</small></div></div>' +
+      '<div class="stat"><b>' + monthGC + '</b><small>GCs this month</small></div>' +
+      '<div class="stat"><b>' + peso(totalAmt) + '</b><small>Total amount</small></div></div>' +
       (pend.length ? '<div class="banner" style="margin:0 0 10px">' + pend.length + ' submission' + (pend.length > 1 ? 's are' : ' is') + ' waiting to send. ' + (navigator.onLine ? '<button class="linkish" id="syncNow">Send now</button>' : 'Will send when online.') + '</div>' : '') +
       (S.subsError ? '<div class="banner" style="margin:0 0 10px;background:var(--err-bg);color:var(--err);border-color:#f5c2bd">' + esc(S.subsError) + ' <button class="linkish" id="retry">Retry</button></div>' : '') +
       '<div class="list-tools"><div class="search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
@@ -620,7 +642,7 @@
       (S.subsLoading ? '<div class="loading"><span class="spinner"></span>Loading submissions…</div>'
         : rows.length ? '<div class="tix">' + rows.map((s, i) =>
           '<div class="tk" role="button" tabindex="0" data-i="' + i + '"><span class="id">' + esc(s.ticketId) + '</span><span class="tk-r">' + remarksPill(s.remarks) + '<button class="tk-del" data-del="' + i + '" title="Delete submission" aria-label="Delete submission"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button></span>' +
-          '<span class="row">' + typePill(s.gcType) + '<span class="pill n">' + esc(s.count || (s.series || []).length) + ' GC' + ((s.count || (s.series || []).length) > 1 ? 's' : '') + '</span>' + (s.onDevice ? '<span class="pill dev" title="Saved on this device">📱 On device</span>' : '') + '<span class="when">' + fmtDate(s.submittedAt) + '</span></span>' +
+          '<span class="row">' + typePill(s.gcType) + '<span class="pill n">' + esc(s.count || (s.series || []).length) + ' GC' + ((s.count || (s.series || []).length) > 1 ? 's' : '') + '</span>' + (totalOf(s) ? '<span class="pill amt-pill">' + peso(totalOf(s)) + '</span>' : '') + (s.onDevice ? '<span class="pill dev" title="Saved on this device">📱 On device</span>' : '') + '<span class="when">' + fmtDate(s.submittedAt) + '</span></span>' +
           '<span class="ser">' + esc((s.series || []).slice(0, 6).join(', ') + ((s.series || []).length > 6 ? ' …' : '')) + '</span></div>').join('') + '</div>'
           : '<div class="empty">' + (all.length ? 'No submission matches your search.' : 'No submissions yet.<br><br><button class="btn" id="startNew">Submit redeemed GCs</button>') + '</div>');
 
@@ -647,13 +669,15 @@
       '<h3 style="font-family:ui-monospace,Menlo,monospace">' + esc(s.ticketId) + '</h3><p class="sub">' + fmtDate(s.submittedAt) + '</p>' +
       '<dl class="kv"><dt>Remarks</dt><dd>' + remarksPill(ob && !ob.error ? 'Pending sync' : (ob ? 'Failed' : s.remarks)) + '</dd>' +
       '<dt>GC type</dt><dd>' + typePill(s.gcType) + '</dd>' +
+      (totalOf(s) ? '<dt>Total amount</dt><dd style="color:var(--blue-800);font-size:16px">' + peso(totalOf(s)) + '</dd>' : '') +
       '<dt>Store</dt><dd>' + esc(S.store.name) + '</dd>' +
       (s.submittedBy ? '<dt>Submitted by</dt><dd>' + esc(s.submittedBy) + '</dd>' : '') +
       (s.notes ? '<dt>Notes</dt><dd style="font-weight:400">' + esc(s.notes) + '</dd>' : '') +
       (s.emailStatus && !/^sent$/i.test(s.emailStatus) ? '<dt>Email</dt><dd>' + esc(s.emailStatus) + '</dd>' : '') +
       '</dl>' +
       (ob && ob.error ? '<div class="banner" style="margin:0 0 12px;background:var(--err-bg);color:var(--err);border-color:#f5c2bd">' + esc(ob.error) + '</div>' : '') +
-      '<p style="margin:0 0 6px;font-weight:600;font-size:13px">Series numbers (' + (s.series || []).length + ')</p><div class="mono-box">' + (s.series || []).map(esc).join('\n') + '</div>' +
+      '<p style="margin:0 0 6px;font-weight:600;font-size:13px">Series numbers (' + (s.series || []).length + ')</p><div class="mono-box">' + (s.series || []).map((x, i) => esc(x) + (amountsOf(s)[i] ? '  —  ' + peso(amountsOf(s)[i]) : '')).join('\n') + '</div>' +
+      (amountsOf(s).some(Boolean) ? '<p class="helper" style="margin:-6px 0 12px">' + amountSummary(amountsOf(s)) + '</p>' : '') +
       (imgs.length ? '<p style="margin:0 0 6px;font-weight:600;font-size:13px">Images (' + imgs.length + ')</p><div class="img-links">' +
         imgs.map((u, i) => /^data:/.test(u) ? '<a href="#" data-full="' + i + '"><img src="' + u + '" alt="GC image ' + (i + 1) + '"></a>' : '<a href="' + esc(u) + '" target="_blank" rel="noopener">Image ' + (i + 1) + ' ↗</a>').join('') + '</div>' +
         (dev.length ? '<p class="helper" style="margin:-4px 0 12px">📱 Photos saved on this device' + (links.length ? ' · <a href="' + esc(links[0]) + '" target="_blank" rel="noopener">open online copy ↗</a>' : '') + '</p>' : '')
@@ -679,7 +703,7 @@
     try {
       await ARC.put({
         clientId: p.clientId, ticketId: sub.ticketId, storeCode: p.store, storeName: p.storeName || '',
-        gcType: p.gcType, series: p.series, count: p.series.length, submittedBy: p.submittedBy, notes: p.notes,
+        gcType: p.gcType, series: p.series, amounts: p.amounts || [], totalAmount: p.totalAmount || 0, count: p.series.length, submittedBy: p.submittedBy, notes: p.notes,
         submittedAt: sub.submittedAt || p.createdAt, remarks: sub.remarks || 'Submitted', emailStatus: sub.emailStatus || '',
         images: (p.images || []).map((i) => i.dataUrl), imageLinks: (sub.images || []).filter((u) => !/^data:/.test(u)),
         savedAt: new Date().toISOString()
