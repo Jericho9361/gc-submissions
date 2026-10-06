@@ -12,7 +12,7 @@ window.GC_CONFIG = {
 
   APP_NAME: 'GC Submissions',
   COMPANY: "Toby's Sports",
-  EMAIL_TO: 'franchise.dev9361@gmail.com',
+  EMAIL_TO: 'FranchiseDev@tobys.com',
 
   GC_TYPES: [
     { id: 'TOBYS GC',      label: 'TOBYS GC',      hint: "Toby's Sports gift certificate" },
