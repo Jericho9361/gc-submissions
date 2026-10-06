@@ -8,7 +8,7 @@
    on this device only and NO email is sent.
    ============================================================ */
 window.GC_CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfy....../exec',',
+  API_URL: 'https://script.google.com/macros/s/AKfycbzJT985gHRjzeD70uWmNEalbzvJsCHHheKAPQY1oRq8KS8hXeheORrNrsQa2jBlnzbR/exec',
 
   APP_NAME: 'GC Submissions',
   COMPANY: "Toby's Sports",
