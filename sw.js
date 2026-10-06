@@ -1,6 +1,6 @@
 /* GC Submissions service worker — caches the app shell so it opens offline.
    Bump VERSION whenever you change index.html / app.js / config.js. */
-const VERSION = 'gc-portal-v4';
+const VERSION = 'gc-portal-v5';
 const SHELL = ['./', './index.html', './app.js', './config.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/tobys-logo.png'];
 
