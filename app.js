@@ -157,8 +157,15 @@
   }
 
   /* --------------------------------------------------------------- sidebar */
+  // "Central" → "Central Area"; "Franchise" → "Franchise Store"
+  function areaLabel(a) {
+    a = String(a || '').trim();
+    if (/franchise/i.test(a)) return 'Franchise Store';
+    if (/\b(area|stores?)$/i.test(a)) return a;
+    return a + ' Area';
+  }
   function areaGroups(list) {
-    const order = ['CENTRAL', 'NORTH', 'SOUTH'];
+    const order = ['CENTRAL', 'NORTH', 'SOUTH', 'FRANCHISE'];
     const groups = {};
     list.forEach((s) => { const k = (s.area || 'Other').trim(); (groups[k] = groups[k] || []).push(s); });
     return Object.keys(groups).sort((x, y) => {
@@ -182,7 +189,7 @@
       '<div class="side-scroll">' +
       (groups.length ? groups.map((g) => {
         const isClosed = !q && closed[g.area];
-        return '<div class="area ' + (isClosed ? 'closed' : '') + '"><button class="area-h" data-area-t="' + esc(g.area) + '"><b>— ' + esc(g.area.toUpperCase()) + ' AREA —</b>' +
+        return '<div class="area ' + (isClosed ? 'closed' : '') + '"><button class="area-h" data-area-t="' + esc(g.area) + '"><b>— ' + esc(areaLabel(g.area).toUpperCase()) + ' —</b>' +
           '<span class="cnt">' + g.stores.length + '</span>' +
           '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 9l6 6 6-6"/></svg></button>' +
           '<div class="area-list">' + g.stores.map((s) =>
@@ -265,7 +272,7 @@
     const pending = S.outbox.filter((o) => o.store === S.store.code).length;
     const n = S.subs.length + pending;
     app.innerHTML =
-      '<div class="page-h"><div class="ttl"><h1>' + esc(S.store.name) + '</h1><p>Branch: ' + esc([S.store.code, S.store.area ? S.store.area + ' Area' : ''].filter(Boolean).join(' — ')) + ' · Redeemed GC submissions</p></div></div>' +
+      '<div class="page-h"><div class="ttl"><h1>' + esc(S.store.name) + '</h1><p>Branch: ' + esc([S.store.code, S.store.area ? areaLabel(S.store.area) : ''].filter(Boolean).join(' — ')) + ' · Redeemed GC submissions</p></div></div>' +
       '<div class="seg" role="tablist">' +
       '<button role="tab" class="' + (S.tab === 'new' ? 'on' : '') + '" data-tab="new">New Submission</button>' +
       '<button role="tab" class="' + (S.tab === 'list' ? 'on' : '') + '" data-tab="list">My Submissions' + (n ? '<span class="count">' + n + '</span>' : '') + '</button>' +
@@ -287,7 +294,7 @@
       '<div class="step3"><i>1</i><b>Select GC type</b><small>TOBYS GC or Sodexo Pluxee</small></div>' +
       '<div class="step3"><i>2</i><b>Enter series numbers</b><small>Type, scan, paste a list or add a range</small></div>' +
       '<div class="step3"><i>3</i><b>Attach GC images</b><small>Submit — Franchise Dev is emailed automatically</small></div></div>' +
-      (areas.length ? '<div class="stats" style="margin-top:14px">' + areas.slice(0, 3).map((g) => '<div class="stat"><b>' + g.stores.length + '</b><small>' + esc(g.area) + ' Area stores</small></div>').join('') + '</div>' : '');
+      (areas.length ? '<div class="stats" style="margin-top:14px">' + areas.slice(0, 4).map((g) => '<div class="stat"><b>' + g.stores.length + '</b><small>' + esc(/franchise/i.test(g.area) ? 'Franchise Stores' : areaLabel(g.area) + ' stores') + '</small></div>').join('') + '</div>' : '');
     const ob = $('#openStores');
     if (window.matchMedia('(max-width:900px)').matches) { ob.style.display = 'inline-block'; ob.onclick = openSide; }
     app.querySelectorAll('[data-code]').forEach((b) => b.onclick = () => go('#/store/' + encodeURIComponent(b.dataset.code) + '/new'));
