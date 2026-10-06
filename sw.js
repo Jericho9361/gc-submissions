@@ -1,8 +1,8 @@
 /* GC Submissions service worker — caches the app shell so it opens offline.
    Bump VERSION whenever you change index.html / app.js / config.js. */
-const VERSION = 'gc-portal-v2';
+const VERSION = 'gc-portal-v3';
 const SHELL = ['./', './index.html', './app.js', './config.js', './manifest.webmanifest',
-  './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
+  './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/tobys-logo.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -145,27 +145,64 @@
   /* -------------------------------------------------------------- top chrome */
   function setNet() {
     const p = $('#netPill');
-    if (DEMO) { p.textContent = 'Demo'; p.className = 'net demo'; }
+    if (DEMO) { p.textContent = 'Demo'; p.title = 'Demo mode'; p.className = 'net demo'; }
     else if (!navigator.onLine) { p.textContent = 'Offline'; p.className = 'net off'; }
     else { p.textContent = 'Online'; p.className = 'net'; }
   }
   function setHeader() {
-    const back = $('#backBtn');
-    if (S.store) {
-      back.classList.remove('hidden');
-      $('#brandMark').textContent = initials(S.store.name);
-      $('#topTitle').textContent = S.store.name;
-      $('#topSub').textContent = [S.store.code, S.store.area].filter(Boolean).join(' · ') + ' — GC Submissions';
-    } else {
-      back.classList.add('hidden');
-      $('#brandMark').textContent = 'GC';
-      $('#topTitle').textContent = (C.APP_NAME || 'GC Submissions');
-      $('#topSub').textContent = (C.COMPANY ? C.COMPANY + ' · ' : '') + 'Redeemed gift certificates';
-    }
     $('#banner').innerHTML = DEMO
       ? '<div class="banner"><b>Demo mode.</b> Not connected yet — submissions stay on this device and no email is sent. Add the Web App URL in <code>config.js</code> to go live.</div>'
       : '';
+    renderSidebar();
   }
+
+  /* --------------------------------------------------------------- sidebar */
+  function areaGroups(list) {
+    const order = ['CENTRAL', 'NORTH', 'SOUTH'];
+    const groups = {};
+    list.forEach((s) => { const k = (s.area || 'Other').trim(); (groups[k] = groups[k] || []).push(s); });
+    return Object.keys(groups).sort((x, y) => {
+      const ix = order.indexOf(x.toUpperCase()), iy = order.indexOf(y.toUpperCase());
+      return (ix < 0 ? 99 : ix) - (iy < 0 ? 99 : iy) || x.localeCompare(y);
+    }).map((k) => ({ area: k, stores: groups[k].sort((p, q) => p.name.localeCompare(q.name)) }));
+  }
+  function renderSidebar() {
+    const side = $('#side'); if (!side) return;
+    const q = S.q.trim().toLowerCase();
+    const list = S.stores.filter((s) => !q || (s.name + ' ' + s.code + ' ' + (s.area || '')).toLowerCase().includes(q));
+    const closed = LS.get('gc_closed_areas', {});
+    const groups = areaGroups(list);
+    const keep = document.activeElement && document.activeElement.id === 'storeQ' ? document.activeElement.selectionStart : null;
+    const scroll = $('.side-scroll', side) ? $('.side-scroll', side).scrollTop : 0;
+    side.innerHTML =
+      '<div class="side-head"><div class="side-label">STORE TABS</div><div class="side-search">' +
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
+      '<input id="storeQ" type="search" placeholder="Search store…" value="' + esc(S.q) + '" autocomplete="off"></div></div>' +
+      '<button class="side-home ' + (S.store ? '' : 'on') + '" id="sideHome"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</button>' +
+      '<div class="side-scroll">' +
+      (groups.length ? groups.map((g) => {
+        const isClosed = !q && closed[g.area];
+        return '<div class="area ' + (isClosed ? 'closed' : '') + '"><button class="area-h" data-area-t="' + esc(g.area) + '"><b>— ' + esc(g.area.toUpperCase()) + ' AREA —</b>' +
+          '<span class="cnt">' + g.stores.length + '</span>' +
+          '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 9l6 6 6-6"/></svg></button>' +
+          '<div class="area-list">' + g.stores.map((s) =>
+            '<button class="st ' + (S.store && S.store.code === s.code ? 'on' : '') + '" data-code="' + esc(s.code) + '"><span class="dot"></span><span class="nm">' + esc(s.name) + '</span><small>' + esc(s.code) + (s.hasPin ? ' 🔒' : '') + '</small></button>').join('') +
+          '</div></div>';
+      }).join('') : '<div class="side-empty">' + (S.stores.length ? 'No store matches “' + esc(S.q) + '”.' : 'No stores yet. Add them in the “Stores” tab of the Google Sheet.') + '</div>') +
+      '</div>' +
+      '<div class="side-foot">Submissions are emailed to<br><b>' + esc(C.EMAIL_TO || '') + '</b></div>';
+    $('.side-scroll', side).scrollTop = scroll;
+    side.querySelectorAll('[data-code]').forEach((b) => b.onclick = () => { closeSide(); go('#/store/' + encodeURIComponent(b.dataset.code) + '/new'); });
+    side.querySelectorAll('[data-area-t]').forEach((b) => b.onclick = () => {
+      const c = LS.get('gc_closed_areas', {}); c[b.dataset.areaT] = !c[b.dataset.areaT]; LS.set('gc_closed_areas', c); renderSidebar();
+    });
+    $('#sideHome', side).onclick = () => { closeSide(); go('#/'); };
+    const qi = $('#storeQ', side);
+    qi.oninput = () => { S.q = qi.value; renderSidebar(); };
+    if (keep !== null) { qi.focus(); qi.setSelectionRange(keep, keep); }
+  }
+  function openSide() { document.body.classList.add('side-open'); }
+  function closeSide() { document.body.classList.remove('side-open'); }
 
   /* ---------------------------------------------------------------- routing */
   function route() {
@@ -228,6 +265,7 @@
     const pending = S.outbox.filter((o) => o.store === S.store.code).length;
     const n = S.subs.length + pending;
     app.innerHTML =
+      '<div class="page-h"><div class="ttl"><h1>' + esc(S.store.name) + '</h1><p>Branch: ' + esc([S.store.code, S.store.area ? S.store.area + ' Area' : ''].filter(Boolean).join(' — ')) + ' · Redeemed GC submissions</p></div></div>' +
       '<div class="seg" role="tablist">' +
       '<button role="tab" class="' + (S.tab === 'new' ? 'on' : '') + '" data-tab="new">New Submission</button>' +
       '<button role="tab" class="' + (S.tab === 'list' ? 'on' : '') + '" data-tab="list">My Submissions' + (n ? '<span class="count">' + n + '</span>' : '') + '</button>' +
@@ -238,26 +276,21 @@
 
   function renderHome() {
     const app = $('#app');
-    const areas = ['All'].concat([...new Set(S.stores.map((s) => s.area).filter(Boolean))]);
-    const q = S.q.toLowerCase();
-    const list = S.stores.filter((s) => (S.area === 'All' || s.area === S.area) &&
-      (!q || (s.name + ' ' + s.code + ' ' + (s.area || '')).toLowerCase().includes(q)));
     const last = S.stores.find((s) => s.code === LS.get('gc_last_store', ''));
+    const areas = areaGroups(S.stores);
     app.innerHTML =
-      '<div class="hero"><h1>Select your store</h1><p>Open your store tab to submit redeemed GCs and see your submission records.</p></div>' +
-      (last ? '<button class="continue" data-code="' + esc(last.code) + '"><div class="store-ava">' + esc(initials(last.name)) + '</div><div style="flex:1"><small>Continue as</small><b>' + esc(last.name) + '</b></div><span aria-hidden="true">›</span></button>' : '') +
-      '<div class="search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-      '<input id="storeQ" type="search" placeholder="Search store name or code" value="' + esc(S.q) + '" autocomplete="off"></div>' +
-      (areas.length > 2 ? '<div class="chips">' + areas.map((a) => '<button class="chip ' + (a === S.area ? 'on' : '') + '" data-area="' + esc(a) + '">' + esc(a) + '</button>').join('') + '</div>' : '') +
-      (list.length
-        ? '<div class="store-grid">' + list.map((s) =>
-          '<button class="store-tab" data-code="' + esc(s.code) + '"><div class="store-ava">' + esc(initials(s.name)) + '</div><div style="min-width:0"><b>' + esc(s.name) + '</b><small>' +
-          esc([s.code, s.area].filter(Boolean).join(' · ')) + (s.hasPin ? ' · 🔒' : '') + '</small></div></button>').join('') + '</div>'
-        : '<div class="empty">' + (S.stores.length ? 'No store matches “' + esc(S.q) + '”.' : 'No stores set up yet. Add stores in the “Stores” tab of the Google Sheet.') + '</div>');
+      '<div class="page-h"><div class="ttl"><h1>GC Management Portal</h1><p>' + esc(C.COMPANY || "Toby's Sports") + ' · Franchise Development</p></div></div>' +
+      '<div class="welcome"><h1>Welcome! Select your store tab.</h1><p>Choose your store from the store tabs on the left to submit redeemed TOBYS GC and Sodexo Pluxee gift certificates and to view your store’s submission records.</p>' +
+      '<button class="btn" id="openStores" style="display:none">Choose my store</button></div>' +
+      (last ? '<button class="continue" data-code="' + esc(last.code) + '"><div class="store-ava">' + esc(initials(last.name)) + '</div><div style="flex:1"><small>Continue as</small><b>' + esc(last.name) + '</b></div><span aria-hidden="true" style="color:var(--blue-700);font-size:20px">›</span></button>' : '') +
+      '<div class="steps3">' +
+      '<div class="step3"><i>1</i><b>Select GC type</b><small>TOBYS GC or Sodexo Pluxee</small></div>' +
+      '<div class="step3"><i>2</i><b>Enter series numbers</b><small>Type, scan, paste a list or add a range</small></div>' +
+      '<div class="step3"><i>3</i><b>Attach GC images</b><small>Submit — Franchise Dev is emailed automatically</small></div></div>' +
+      (areas.length ? '<div class="stats" style="margin-top:14px">' + areas.slice(0, 3).map((g) => '<div class="stat"><b>' + g.stores.length + '</b><small>' + esc(g.area) + ' Area stores</small></div>').join('') + '</div>' : '');
+    const ob = $('#openStores');
+    if (window.matchMedia('(max-width:900px)').matches) { ob.style.display = 'inline-block'; ob.onclick = openSide; }
     app.querySelectorAll('[data-code]').forEach((b) => b.onclick = () => go('#/store/' + encodeURIComponent(b.dataset.code) + '/new'));
-    app.querySelectorAll('[data-area]').forEach((b) => b.onclick = () => { S.area = b.dataset.area; renderHome(); });
-    const qi = $('#storeQ');
-    qi.oninput = () => { S.q = qi.value; const pos = qi.selectionStart; renderHome(); const n = $('#storeQ'); n.focus(); n.setSelectionRange(pos, pos); };
   }
 
   /* ------------------------------------------------------------------ form */
@@ -266,10 +299,10 @@
   function renderForm() {
     const pane = $('#pane');
     const types = C.GC_TYPES || [];
-    pane.innerHTML =
+    pane.innerHTML = '<div class="form-grid">' +
       // Step 1
-      '<section class="card"><div class="step-h"><span class="step-n ' + (S.gcType ? 'done' : '') + '">' + (S.gcType ? '✓' : '1') + '</span><h2>GC type</h2></div>' +
-      '<div class="types">' + types.map((t) => '<button class="type ' + (S.gcType === t.id ? 'on' : '') + '" data-type="' + esc(t.id) + '"><b><span class="dot" style="background:' + (/pluxee|sodexo/i.test(t.id) ? 'var(--pluxee)' : 'var(--tobys)') + '"></span>' + esc(t.label) + '</b><small>' + esc(t.hint || '') + '</small></button>').join('') + '</div></section>' +
+      '<section class="card span2"><div class="step-h"><span class="step-n ' + (S.gcType ? 'done' : '') + '">' + (S.gcType ? '✓' : '1') + '</span><h2>GC type</h2></div>' +
+      '<div class="types">' + types.map((t) => '<button class="type ' + (S.gcType === t.id ? 'on' : '') + '" data-type="' + esc(t.id) + '"><b><span class="dot" style="background:' + (/pluxee|sodexo/i.test(t.id) ? 'var(--silver-500)' : 'var(--blue-600)') + '"></span>' + esc(t.label) + '</b><small>' + esc(t.hint || '') + '</small></button>').join('') + '</div></section>' +
       // Step 2
       '<section class="card"><div class="step-h"><span class="step-n ' + (S.series.length ? 'done' : '') + '">' + (S.series.length ? '✓' : '2') + '</span><h2>Series numbers</h2><span class="meta">' + S.series.length + ' GC' + (S.series.length === 1 ? '' : 's') + '</span></div>' +
       '<div class="series-entry"><input id="serIn" placeholder="Type or scan series no." autocomplete="off" autocapitalize="characters" enterkeyhint="done"><button class="btn" id="serAdd">Add</button></div>' +
@@ -285,8 +318,8 @@
       '<div class="thumbs">' + S.images.map((im, i) => '<div class="thumb"><img src="' + im.dataUrl + '" alt="GC image ' + (i + 1) + '"><button aria-label="Remove image" data-rmimg="' + i + '">×</button><span>' + Math.round(im.size / 1024) + ' KB</span></div>').join('') + '</div>' +
       '<p class="helper">Photograph the front of each redeemed GC so the series number is readable. Several GCs can be in one photo.</p></section>' +
       // Details
-      '<section class="card"><div class="field"><label for="byIn">Submitted by <em>(optional)</em></label><input id="byIn" placeholder="Name of cashier / staff" value="' + esc(S.submittedBy) + '"></div>' +
-      '<div class="field" style="margin:0"><label for="noteIn">Notes <em>(optional)</em></label><textarea id="noteIn" placeholder="e.g. OR / transaction no., customer name">' + esc(S.notes) + '</textarea></div></section>';
+      '<section class="card span2"><div class="field"><label for="byIn">Submitted by <em>(optional)</em></label><input id="byIn" placeholder="Name of cashier / staff" value="' + esc(S.submittedBy) + '"></div>' +
+      '<div class="field" style="margin:0"><label for="noteIn">Notes <em>(optional)</em></label><textarea id="noteIn" placeholder="e.g. OR / transaction no., customer name">' + esc(S.notes) + '</textarea></div></section></div>';
 
     pane.querySelectorAll('[data-type]').forEach((b) => b.onclick = () => { S.gcType = b.dataset.type; renderForm(); });
     const inp = $('#serIn');
@@ -611,7 +644,8 @@
   }
 
   /* ------------------------------------------------------------------ boot */
-  $('#backBtn').onclick = () => go('#/');
+  $('#menuBtn').onclick = () => document.body.classList.contains('side-open') ? closeSide() : openSide();
+  $('#sideScrim').onclick = closeSide;
   $('#fileGallery').onchange = (e) => { handleFiles(e.target.files); e.target.value = ''; };
   $('#fileCamera').onchange = (e) => { handleFiles(e.target.files); e.target.value = ''; };
   window.addEventListener('hashchange', route);
